@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f8e9">
+  <meta name="description" content="Encontre um dinossauro e leve-o para perto de você com realidade aumentada.">
+  <title>Dinossauros por perto!</title>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><img src="IMG/miniaturas/t-rex.png" alt=""></span>
+        <span>Pequenos Exploradores</span>
+      </div>
+      <div class="safe-note">🌿 Um mundo de descobertas</div>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div class="eyebrow"><span aria-hidden="true">✦</span> Uma aventura jurássica</div>
+        <h1 id="page-title">Um dino<br>bem <span>pertinho!</span></h1>
+        <p class="subtitle">Escolha seu dinossauro e veja como ele fica aí, pertinho de você!</p>
+
+        <span class="choose-label" id="choose-label">Qual você quer conhecer?</span>
+        <!-- Botões criados pelo js/app.js a partir da lista em js/dinos.js -->
+        <div class="dino-list" id="dino-list" role="group" aria-labelledby="choose-label"></div>
+      </section>
+
+      <section class="play-area" aria-label="Visualização do dinossauro em 3D">
+        <!-- Cartão de informações: preenchido pelo js/app.js com os dados de js/dinos.js -->
+        <div class="dino-info" aria-live="polite">
+          <div class="dino-info-head">
+            <img class="dino-info-thumb" id="current-thumb" src="IMG/miniaturas/t-rex.png" alt="">
+            <span class="dino-info-name" id="current-name">T-Rex</span>
+            <span class="diet-tag" id="current-diet"></span>
+          </div>
+          <ul class="dino-facts">
+            <li title="Comprimento"><span aria-hidden="true">📏</span> <span id="fact-length"></span></li>
+            <li title="Peso"><span aria-hidden="true">⚖️</span> <span id="fact-weight"></span></li>
+            <li id="fact-period-item"><span aria-hidden="true">🕰️</span> <span id="fact-period"></span></li>
+          </ul>
+          <p class="dino-fact" id="fact-text"></p>
+        </div>
+        <div class="loading" id="loading" aria-live="polite">
+          <img class="loading-mark" id="loading-thumb" src="IMG/miniaturas/t-rex.png" alt="">
+          <span>Preparando a aventura...</span>
+        </div>
+        <model-viewer
+          id="dinosaur"
+          alt="Modelo 3D de dinossauro"
+          camera-orbit="auto 75deg auto"
+          ar
+          ar-modes="webxr scene-viewer quick-look"
+          ar-placement="floor"
+          shadow-intensity="1"
+          exposure="1"
+          animation-crossfade-duration="500">
+        </model-viewer>
+        <div class="controls">
+          <button class="ar-button" id="ar-button" type="button">
+            <span class="ar-icon" aria-hidden="true">📷</span>
+            <span>Ver no meu espaço!</span>
+          </button>
+          <div class="hint">☝️ Arraste o dino para girar</div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <section class="camera-stage" id="camera-stage" aria-label="Dinossauros no ambiente" hidden>
+    <video class="camera-feed" id="camera-feed" autoplay playsinline muted></video>
+    <div class="camera-shade" aria-hidden="true"></div>
+    <!-- Os dinossauros da cena são criados aqui pelo js/app.js -->
+    <div class="scene-layer" id="scene-layer"></div>
+    <div class="camera-topbar">
+      <button class="camera-button" id="close-camera" type="button" aria-label="Voltar">✕</button>
+      <div class="camera-name" id="camera-name" aria-live="polite"></div>
+      <div class="camera-topbar-group">
+        <button class="camera-button" id="toggle-motion" type="button" aria-label="Movimento dos dinossauros" aria-pressed="true" title="Ligar/desligar movimento">🐾</button>
+        <button class="camera-button" id="switch-camera" type="button" aria-label="Trocar câmera">🔄</button>
+      </div>
+    </div>
+    <div class="camera-loading" id="camera-loading" aria-live="polite" hidden>Carregando dinossauro...</div>
+    <div class="camera-tools">
+      <span class="camera-tools-label" aria-hidden="true">Adicionar</span>
+      <!-- Botões criados pelo js/app.js a partir da lista em js/dinos.js -->
+      <div class="camera-dinos" id="camera-dinos" role="group" aria-label="Adicionar um dinossauro à cena"></div>
+    </div>
+    <div class="side-controls rotate-controls" role="group" aria-label="Girar ou remover o dinossauro escolhido">
+      <button class="size-button dino-control" id="rotate-left" type="button" aria-label="Girar para a esquerda">⟲</button>
+      <span class="size-value" id="rotate-value" aria-live="polite">0°</span>
+      <button class="size-button dino-control" id="rotate-right" type="button" aria-label="Girar para a direita">⟳</button>
+      <span class="side-divider" aria-hidden="true"></span>
+      <button class="size-button dino-control" id="remove-dino" type="button" aria-label="Remover o dinossauro escolhido">🗑</button>
+    </div>
+    <div class="side-controls size-controls" role="group" aria-label="Tamanho e altura do dinossauro escolhido">
+      <button class="size-button dino-control" id="size-up" type="button" aria-label="Aumentar tamanho">+</button>
+      <span class="size-value" id="size-value" aria-live="polite">100%</span>
+      <button class="size-button dino-control" id="size-down" type="button" aria-label="Diminuir tamanho">−</button>
+      <span class="side-divider" aria-hidden="true"></span>
+      <button class="size-button dino-control" id="move-up" type="button" aria-label="Subir um pouco">▲</button>
+      <span class="size-value">Altura</span>
+      <button class="size-button dino-control" id="move-down" type="button" aria-label="Descer um pouco">▼</button>
+    </div>
+    <div class="camera-hint" id="camera-hint">Toque no dino para escolher · Arraste nele para girar · Arraste fora para mover</div>
+  </section>
+  <div class="toast" id="message" role="status" aria-live="polite" hidden></div>
+
+  <script src="js/dinos.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

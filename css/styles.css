@@ -1,0 +1,706 @@
+:root {
+  color-scheme: light;
+  font-family: "Trebuchet MS", "Arial Rounded MT Bold", Arial, sans-serif;
+  color: #233d35;
+  background: #f5f8e9;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --green: #245c46;
+  --green-dark: #194733;
+  --lime: #dff18c;
+  --coral: #ff8068;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(ellipse at 82% 25%, rgb(255 255 255 / 68%), transparent 32%),
+    #f5f8e9;
+}
+
+button { font: inherit; }
+
+.page {
+  width: min(1120px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: max(24px, env(safe-area-inset-top)) 28px max(24px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  /* Letra bastão: maiúsculas em fonte simples, sem serifa (fácil para crianças). */
+  font-family: Arial, Helvetica, sans-serif;
+  text-transform: uppercase;
+}
+
+.page button { text-transform: inherit; }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--green-dark);
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+
+.brand-mark {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--lime);
+  transform: rotate(-5deg);
+}
+
+.brand-mark img { width: 40px; height: 40px; object-fit: contain; }
+
+.safe-note {
+  padding: 9px 13px;
+  border: 1px solid #e1e9d1;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 65%);
+  color: #557064;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(390px, 1.1fr);
+  gap: clamp(24px, 5vw, 64px);
+  align-items: center;
+}
+
+.intro { padding: 12px 0 20px; }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  color: #648356;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 510px;
+  margin: 0;
+  color: var(--green-dark);
+  font-size: clamp(40px, 5.4vw, 62px);
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1.02;
+}
+
+h1 span { color: #ed765e; }
+
+.subtitle {
+  max-width: 390px;
+  margin: 17px 0 23px;
+  color: #66776b;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.choose-label {
+  display: block;
+  margin-bottom: 10px;
+  color: #38594a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.dino-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 440px;
+}
+
+.dino-choice {
+  position: relative;
+  min-width: 0;
+  min-height: 96px;
+  padding: 8px 6px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  border: 2px solid transparent;
+  border-radius: 20px;
+  background: #fff;
+  color: #345748;
+  box-shadow: 0 5px 15px rgb(46 73 47 / 6%);
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dino-choice:hover { transform: translateY(-2px); }
+.dino-choice:focus-visible, .ar-button:focus-visible { outline: 4px solid #f6bd63; outline-offset: 3px; }
+
+.dino-choice[aria-pressed="true"] {
+  border-color: #7dba65;
+  background: #faffed;
+  box-shadow: 0 5px 16px rgb(88 138 67 / 15%);
+}
+
+.diet-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.dino-thumb { width: 100%; max-width: 96px; height: 58px; object-fit: contain; pointer-events: none; }
+.dino-name { font-size: 12px; font-weight: 900; letter-spacing: .3px; }
+
+.play-area {
+  position: relative;
+  min-height: 510px;
+  height: min(68vh, 650px);
+  overflow: hidden;
+  border: 8px solid #fff;
+  border-radius: 38px;
+  background:
+    radial-gradient(ellipse at 50% 77%, rgb(129 168 104 / 22%), transparent 35%),
+    linear-gradient(180deg, #d9f0e2 0%, #e8f3dd 55%, #cbdcaa 100%);
+  box-shadow: 0 22px 55px rgb(52 83 48 / 12%);
+  isolation: isolate;
+}
+
+.play-area::before, .play-area::after {
+  position: absolute;
+  z-index: -1;
+  color: rgb(74 131 82 / 18%);
+  content: "✿";
+  font-size: 120px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.play-area::before { top: 16%; left: 7%; transform: rotate(-24deg); }
+.play-area::after { right: 7%; bottom: 14%; font-size: 85px; transform: rotate(20deg); }
+
+/* Cartão de informações do dino (canto superior da área 3D) */
+.dino-info {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  left: 14px;
+  max-width: min(390px, calc(100% - 28px));
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 20px;
+  background: rgb(255 255 255 / 84%);
+  color: #466354;
+  box-shadow: 0 6px 18px rgb(46 73 47 / 8%);
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.dino-info-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.dino-info-thumb { width: 40px; height: 24px; object-fit: contain; }
+.dino-info-name { color: var(--green-dark); font-size: 15px; font-weight: 900; }
+
+.diet-tag {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.diet-tag[hidden] { display: none; }
+
+/* Cores por tipo de alimentação (tag do cartão e selo dos botões) */
+.diet-carnivoro { background: #ffe1d9; color: #a63f27; }
+.diet-herbivoro { background: #e2f3cf; color: #3e6b26; }
+.diet-onivoro { background: #fff0c7; color: #87601a; }
+
+.dino-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dino-facts li {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgb(36 92 70 / 8%);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.dino-fact {
+  margin: 7px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.dino-fact[hidden] { display: none; }
+
+model-viewer {
+  width: 100%;
+  height: 100%;
+  --poster-color: transparent;
+  --progress-bar-color: #ff8068;
+  --progress-mask: #e8f3dd;
+  background: transparent;
+  touch-action: pan-y;
+}
+
+.loading {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #42644e;
+  font-size: 14px;
+  font-weight: 800;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+
+.loading-mark { width: 110px; height: 70px; object-fit: contain; animation: bounce 1s ease-in-out infinite alternate; }
+.loading[hidden] { opacity: 0; visibility: hidden; }
+
+@keyframes bounce { to { transform: translateY(-8px) rotate(7deg); } }
+
+.controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+}
+
+.ar-button {
+  min-width: min(260px, 100%);
+  min-height: 58px;
+  padding: 12px 23px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 19px;
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 8px 18px rgb(28 78 54 / 22%);
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 900;
+  transition: background .18s ease, transform .18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ar-button:hover { background: var(--green-dark); transform: translateY(-2px); }
+.ar-icon { font-size: 23px; }
+
+.hint {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 88%);
+  color: #526a5c;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.toast {
+  position: fixed;
+  z-index: 5;
+  right: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 20px;
+  width: fit-content;
+  max-width: min(440px, calc(100vw - 40px));
+  margin: 0 auto;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: #233d35;
+  color: #fff;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 18%);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.toast[hidden] { display: none; }
+
+.camera-stage[hidden] { display: none; }
+
+.camera-stage {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: #18251f;
+  color: #fff;
+  isolation: isolate;
+  touch-action: none;
+}
+
+.camera-feed {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #18251f;
+}
+
+.camera-shade {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(0 0 0 / 38%), transparent 22%, transparent 70%, rgb(0 0 0 / 40%));
+  pointer-events: none;
+}
+
+/*
+ * Cena do modo câmera: cada dinossauro é um model-viewer que ocupa a tela
+ * inteira (nunca corta o modelo). Posição, tamanho e rotação são feitos pela
+ * câmera 3D no JS (js/app.js → updateDino), mantendo os pés no ponto escolhido.
+ * O z-index de cada dino é definido pelo JS: quem está mais embaixo na tela
+ * (mais perto) fica na frente.
+ */
+.scene-layer {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.scene-layer model-viewer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  pointer-events: none;
+  --poster-color: transparent;
+  --progress-bar-color: transparent;
+  --progress-mask: transparent;
+}
+
+#dinosaur { cursor: grab; touch-action: none; }
+#dinosaur:active { cursor: grabbing; }
+
+.camera-topbar {
+  position: absolute;
+  z-index: 3;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  left: max(14px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.camera-topbar > * { pointer-events: auto; }
+.camera-topbar-group { display: flex; gap: 8px; }
+
+.camera-name {
+  padding: 10px 16px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 999px;
+  background: rgb(20 35 28 / 62%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.camera-name:empty { display: none; }
+.camera-name-thumb {
+  width: 44px;
+  height: 28px;
+  padding: 2px 4px;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 88%);
+  object-fit: contain;
+  flex: none;
+}
+
+.camera-tools {
+  position: absolute;
+  z-index: 3;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.camera-dinos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.camera-dinos {
+  padding: 7px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 19px;
+  background: rgb(20 35 28 / 68%);
+  backdrop-filter: blur(12px);
+}
+
+.camera-button, .camera-dino, .size-button {
+  min-width: 50px;
+  min-height: 50px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 17px;
+  background: rgb(255 255 255 / 13%);
+  color: #fff;
+  cursor: pointer;
+  font-size: 23px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.camera-button:focus-visible, .camera-dino:focus-visible, .size-button:focus-visible {
+  outline: 3px solid #f6bd63;
+  outline-offset: 3px;
+}
+
+.camera-dino {
+  min-width: 64px;
+  min-height: 48px;
+  padding: 3px;
+  border-radius: 15px;
+}
+
+.camera-dino-thumb { width: 56px; height: 38px; object-fit: contain; pointer-events: none; }
+
+.camera-dino[aria-pressed="true"], .camera-button[aria-pressed="true"] {
+  border-color: #dff18c;
+  background: #dff18c;
+  color: #193f2e;
+}
+
+.side-controls {
+  position: absolute;
+  z-index: 3;
+  top: 52%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 19px;
+  background: rgb(20 35 28 / 58%);
+  backdrop-filter: blur(10px);
+  transform: translateY(-50%);
+}
+
+.side-divider {
+  width: 70%;
+  height: 1px;
+  margin: 2px 0;
+  background: rgb(255 255 255 / 25%);
+}
+
+.size-button:disabled { opacity: .35; cursor: default; }
+
+.camera-tools-label {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgb(20 35 28 / 68%);
+  color: #dff18c;
+  font-size: 12px;
+  font-weight: 900;
+  backdrop-filter: blur(8px);
+}
+
+.size-controls { right: max(14px, env(safe-area-inset-right)); }
+.rotate-controls { left: max(14px, env(safe-area-inset-left)); }
+
+.size-button {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  min-width: 42px;
+  min-height: 42px;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 16%);
+  color: #fff;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.size-value {
+  min-width: 42px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.camera-hint {
+  position: absolute;
+  z-index: 3;
+  right: 68px;
+  bottom: max(80px, calc(env(safe-area-inset-bottom) + 72px));
+  left: 68px;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: rgb(20 35 28 / 65%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+@media (max-width: 680px) {
+  .camera-dinos { gap: 5px; padding: 5px; }
+  .camera-button { min-width: 44px; min-height: 44px; border-radius: 14px; }
+  .camera-dino { min-width: 52px; min-height: 42px; border-radius: 13px; }
+  .camera-dino-thumb { width: 46px; height: 32px; }
+  .camera-name { padding: 8px 12px; font-size: 13px; }
+  .camera-name-thumb { width: 36px; height: 24px; }
+  .side-controls { gap: 5px; padding: 5px; }
+  .size-controls { right: max(10px, env(safe-area-inset-right)); }
+  .rotate-controls { left: max(10px, env(safe-area-inset-left)); }
+  .size-button { min-width: 38px; min-height: 38px; }
+  .camera-hint { right: 65px; left: 65px; font-size: 12px; }
+}
+
+@media (max-height: 520px) {
+  .camera-tools { right: max(70px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); left: max(70px, env(safe-area-inset-left)); }
+  .camera-hint { bottom: max(66px, calc(env(safe-area-inset-bottom) + 56px)); }
+}
+
+.camera-loading {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  padding: 11px 15px;
+  border-radius: 999px;
+  background: rgb(20 35 28 / 72%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.camera-loading[hidden] { display: none; }
+.page.camera-open { display: none; }
+
+
+@media (max-width: 760px) {
+  .page { gap: 12px; padding-right: 18px; padding-left: 18px; }
+  .brand { font-size: 15px; }
+  .brand-mark { width: 40px; height: 40px; }
+  .brand-mark img { width: 34px; height: 34px; }
+  .safe-note { padding: 8px 10px; font-size: 10px; }
+  main { grid-template-columns: 1fr; gap: 10px; align-content: start; }
+  .intro { padding: 8px 2px 0; }
+  .eyebrow { margin-bottom: 8px; font-size: 10px; }
+  h1 { max-width: 480px; font-size: clamp(36px, 9.5vw, 56px); letter-spacing: -.8px; }
+  .subtitle { margin: 10px 0 14px; font-size: 14px; }
+  .choose-label { margin-bottom: 7px; font-size: 12px; }
+  .dino-list { gap: 8px; max-width: none; }
+  .dino-choice { min-height: 82px; padding: 6px 4px 8px; border-radius: 16px; }
+  .dino-thumb { height: 46px; }
+  .dino-name { font-size: 11px; }
+  .play-area { min-height: 330px; height: min(48vh, 440px); border-width: 6px; border-radius: 30px; }
+  .dino-info { top: 10px; left: 10px; max-width: calc(100% - 20px); padding: 8px 10px; border-radius: 16px; }
+  .dino-info-name { font-size: 13px; }
+  .diet-tag, .dino-facts li { font-size: 10px; }
+  .dino-facts { margin-top: 6px; gap: 4px; }
+  .dino-fact { margin-top: 5px; font-size: 11px; }
+  .controls { right: 12px; bottom: 12px; left: 12px; gap: 7px; }
+  .ar-button { min-height: 52px; border-radius: 17px; font-size: 16px; }
+  .hint { padding: 6px 10px; font-size: 11px; }
+}
+
+@media (max-width: 520px) {
+  .camera-tools-label { display: none; }
+}
+
+@media (max-width: 380px) {
+  .page { padding-right: 13px; padding-left: 13px; }
+  .dino-name { font-size: 10px; }
+  .safe-note { max-width: 115px; text-align: center; }
+  .play-area { min-height: 300px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
