@@ -644,14 +644,9 @@ function stopCamera() {
 
 async function openCamera() {
   if (openingCamera || cameraStream) return;
-  if (previewViewer.canActivateAR) {
-    try {
-      await previewViewer.activateAR();
-    } catch (error) {
-      showMessage("Não foi possível iniciar a realidade aumentada. Confira a permissão da câmera.");
-    }
-    return;
-  }
+  // Sempre usamos o nosso modo câmera (com os ícones para adicionar, girar e
+  // mudar o tamanho), também em celulares e tablets. O AR nativo do aparelho
+  // (WebXR / Scene Viewer / Quick Look) tem a própria tela, sem esses controles.
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showMessage("A câmera precisa de uma página segura. Abra pelo atalho abrir-no-navegador.bat ou use um endereço HTTPS.");
