@@ -644,6 +644,32 @@ model-viewer {
   .camera-hint { bottom: max(66px, calc(env(safe-area-inset-bottom) + 56px)); }
 }
 
+/* Botão que abre o dino escolhido no AR do aparelho (fica fixo no chão) */
+.fix-ar-button {
+  position: absolute;
+  z-index: 3;
+  top: max(76px, calc(env(safe-area-inset-top) + 64px));
+  left: 50%;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #dff18c;
+  color: #193f2e;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 25%);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fix-ar-button:disabled { opacity: .45; cursor: default; }
+.fix-ar-button:focus-visible { outline: 3px solid #f6bd63; outline-offset: 3px; }
+
+/* O model-viewer mostra um botão de AR próprio; usamos o nosso. */
+.scene-layer model-viewer::part(default-ar-button) { display: none; }
+
 .camera-loading {
   position: absolute;
   z-index: 2;
