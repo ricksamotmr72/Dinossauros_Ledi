@@ -471,6 +471,16 @@ function startMotion() {
 // O sensor é usado sempre que envia dados de verdade; senão, a imagem.
 // Limite: as duas medem a rotação da câmera (olhar em volta), não o
 // deslocamento; andar até o dino não muda a perspectiva.
+// Diagnóstico (painel que aparece abrindo o endereço com "?debug" no final).
+const diagnostics = {
+  permission: "não pedida",
+  sensorEvents: 0,
+  frames: 0,
+  trackFails: 0,
+  contrast: 0,
+  brightness: 0,
+};
+
 const anchoring = {
   mode: "none",          // "none" | "sensor" | "image"
   matrix: null,          // orientação atual do celular (modo sensor)
@@ -566,6 +576,7 @@ function getRollAngle() {
 }
 
 function onDeviceOrientation(event) {
+  diagnostics.sensorEvents += 1;
   if (event.alpha == null || event.beta == null || event.gamma == null) return;
   const reading = [event.alpha, event.beta, event.gamma];
   const last = anchoring.lastSensor;
@@ -584,14 +595,17 @@ function onDeviceOrientation(event) {
 // após um toque do usuário (chamado no botão "Ver no meu espaço").
 let orientationRequested = false;
 function requestOrientationAccess() {
-  if (orientationRequested || typeof DeviceOrientationEvent === "undefined") return;
+  if (typeof DeviceOrientationEvent === "undefined") { diagnostics.permission = "sem suporte"; return; }
+  if (orientationRequested) return;
   orientationRequested = true;
   const listen = () => window.addEventListener("deviceorientation", onDeviceOrientation);
   if (typeof DeviceOrientationEvent.requestPermission === "function") {
+    diagnostics.permission = "pedida";
     DeviceOrientationEvent.requestPermission()
-      .then((state) => { if (state === "granted") listen(); })
-      .catch(() => {});
+      .then((state) => { diagnostics.permission = state; if (state === "granted") listen(); })
+      .catch((error) => { diagnostics.permission = `erro: ${error?.name || error}`; });
   } else {
+    diagnostics.permission = "não precisa";
     listen();
   }
 }
@@ -663,6 +677,7 @@ function estimateShift(key, cur, w, h, guessX, guessY, search) {
   for (let y = margin; y < h - margin; y += step) {
     for (let x = margin; x < w - margin; x += step) { contrast += key[y * w + x]; samples += 1; }
   }
+  if (w > IMAGE_TRACK_SIZE / 2 + 1) diagnostics.contrast = samples ? contrast / samples : 0;
   if (!samples || contrast / samples < IMAGE_TRACK_MIN_CONTRAST) return null; // parede lisa / escuro
   const size = 2 * search + 1;
   const scores = new Float64Array(size * size);
@@ -712,9 +727,13 @@ function trackImageFrame() {
   }
   t.ctx.drawImage(cameraFeed, 0, 0, w, h);
   const pixels = t.ctx.getImageData(0, 0, w, h).data;
+  let brightness = 0;
   for (let i = 0, p = 0; i < t.gray.length; i++, p += 4) {
     t.gray[i] = pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114;
+    brightness += t.gray[i];
   }
+  diagnostics.frames += 1;
+  diagnostics.brightness = brightness / t.gray.length;
   computeEdges(t.gray, t.current, w, h);
   halve(t.current, w, h, t.current2, t.w2, t.h2);
   if (!t.key) {
@@ -728,6 +747,7 @@ function trackImageFrame() {
   // 2) Escala fina: acerta o valor exato.
   const fine = coarse && estimateShift(t.key, t.current, w, h, coarse.dx * 2, coarse.dy * 2, 2);
   if (!fine) {
+    diagnostics.trackFails += 1;
     // Imagem sem detalhes ou movimento brusco demais: recomeça a referência
     // a partir daqui, sem tirar os dinos do lugar.
     t.baseX = t.shiftX;
@@ -1449,6 +1469,42 @@ document.addEventListener("fullscreenchange", () => {
     closeCamera(false);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Versão e diagnóstico
+// ---------------------------------------------------------------------------
+// A versão aparece no canto da tela da câmera: serve para conferir se o
+// celular está mesmo com a versão nova (e não com arquivos antigos em cache).
+// Abrindo o endereço com "?debug" no final (ex.: .../index.html?debug), um
+// painel mostra ao vivo o que o sensor e o rastreio pela imagem recebem.
+const APP_VERSION = "0.7";
+document.querySelector("#app-version").textContent = `v${APP_VERSION}`;
+
+const debugPanel = document.querySelector("#debug-panel");
+if (new URLSearchParams(location.search).has("debug")) {
+  debugPanel.hidden = false;
+  let lastFrames = 0, lastTime = performance.now();
+  window.setInterval(() => {
+    if (cameraStage.hidden) return;
+    const now = performance.now();
+    const fps = ((diagnostics.frames - lastFrames) * 1000) / (now - lastTime);
+    lastFrames = diagnostics.frames;
+    lastTime = now;
+    const s = anchoring.lastSensor;
+    const d = selectedDino;
+    const p = d ? projectAnchor(d) : null;
+    debugPanel.textContent = [
+      `versão ${APP_VERSION} · modo: ${anchoring.mode}`,
+      `sensor: permissão ${diagnostics.permission} · eventos ${diagnostics.sensorEvents} · leituras diferentes ${anchoring.sensorChanges}`,
+      `  α β γ: ${s ? s.map((v) => v.toFixed(1)).join(" / ") : "—"}`,
+      `câmera: ${cameraFeed.videoWidth}x${cameraFeed.videoHeight} · ${facingMode === "user" ? "frontal" : "traseira"}`,
+      `imagem: ${fps.toFixed(0)} análises/s · falhas ${diagnostics.trackFails} · detalhes ${diagnostics.contrast.toFixed(1)} · brilho ${diagnostics.brightness.toFixed(0)}`,
+      `ambiente andou: ${imageTracker.shiftX.toFixed(0)}, ${imageTracker.shiftY.toFixed(0)} px`,
+      d ? `dino escolhido: âncora ${d.anchor?.mode ?? "nenhuma"} · tela ${p.ahead ? `${p.x.toFixed(0)}, ${p.y.toFixed(0)}` : "atrás"}` : "dino escolhido: —",
+      navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 90),
+    ].join("\n");
+  }, 250);
+}
 
 selectPreviewDinosaur(0);
 updateSelectionUI();

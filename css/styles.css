@@ -645,6 +645,37 @@ model-viewer {
 }
 
 
+/* Número da versão (para conferir se o celular está com a versão nova) */
+.app-version {
+  position: absolute;
+  z-index: 3;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: max(4px, env(safe-area-inset-bottom));
+  color: rgb(255 255 255 / 55%);
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* Painel de diagnóstico (abrir o endereço com "?debug") */
+.debug-panel {
+  position: absolute;
+  z-index: 4;
+  top: max(72px, calc(env(safe-area-inset-top) + 60px));
+  left: 8px;
+  right: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 72%);
+  color: #b9ff8c;
+  font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+.debug-panel[hidden] { display: none; }
+
 /* Setinhas na borda: indicam para onde virar o celular para achar um dino */
 .offscreen-markers {
   position: absolute;
