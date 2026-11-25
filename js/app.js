@@ -27,8 +27,16 @@ const MOTION_LOOK_ANGLE = [12, 28];    // "olhar em volta": quanto vira (graus, 
 const MOTION_LOOK_TIME = [2600, 4200]; // duração de cada olhada (ms, mín/máx)
 const MOTION_LOOK_PAUSE = [4000, 10000]; // intervalo entre olhadas (ms, mín/máx)
 const ANIMATION_ACTION_PAUSE = [4000, 9000]; // modelos animados: intervalo entre ações (ms)
-// Dinos fixos no ambiente (giroscópio)
-const CAMERA_FEED_FOV = 65; // campo de visão da câmera do celular no lado maior da imagem (graus)
+// Dinos fixos no ambiente (ver a seção "Dinos fixos no ambiente")
+const CAMERA_FEED_FOV = 65;      // campo de visão da câmera do celular no lado maior da imagem (graus)
+const SENSOR_MIN_CHANGES = 3;    // leituras diferentes do giroscópio até confiar nele
+const SENSOR_TIMEOUT = 1500;     // ms sem leituras do giroscópio: volta a usar a imagem
+const IMAGE_TRACK_SIZE = 160;    // px do lado maior da imagem reduzida usada no rastreio
+const IMAGE_TRACK_FPS = 30;      // quadros analisados por segundo
+const IMAGE_TRACK_SEARCH = 7;    // busca do deslocamento por quadro (px da imagem reduzida)
+const IMAGE_TRACK_REKEY = 12;    // troca o quadro de referência após andar isso (px reduzidos)
+const IMAGE_TRACK_DEADBAND = 0.2; // ignora tremidinhas menores que isso (px reduzidos)
+const IMAGE_TRACK_MIN_CONTRAST = 2; // imagem sem detalhes (parede lisa): não rastreia
 
 // ---------------------------------------------------------------------------
 // Elementos
@@ -449,20 +457,33 @@ function startMotion() {
 }
 
 // ---------------------------------------------------------------------------
-// Dinos fixos no ambiente (giroscópio)
+// Dinos fixos no ambiente
 // ---------------------------------------------------------------------------
-// O navegador informa a orientação do celular (deviceorientation). Ao inserir
-// ou mover um dino, guardamos a DIREÇÃO no ambiente em que ele foi colocado
-// (dino.anchor, um vetor no sistema do mundo: x = leste, y = norte, z = cima).
-// A cada quadro, projetamos essa direção na tela com a orientação atual:
-// virando o celular, o dino fica no lugar e sai da tela; apontando de volta,
-// ele reaparece. Inclinando o celular de lado, o dino inclina junto.
-// Limite: o giroscópio mede só a rotação (não o deslocamento), então dá para
-// olhar em volta, mas andar até o dino não muda a perspectiva.
-// Sem giroscópio (computador), os dinos ficam presos à tela como antes.
-const anchoring = { active: false, matrix: null, hinted: false };
-const isAnchoringActive = () => anchoring.active && !cameraStage.hidden;
+// Ao inserir ou mover um dino, guardamos ONDE NO AMBIENTE ele foi colocado
+// (dino.anchor). A cada quadro calculamos onde esse lugar aparece na tela:
+// virando a câmera, o dino fica no lugar, sai da tela e reaparece quando a
+// câmera aponta de volta para lá. Há duas formas de saber como a câmera virou:
+//  1. "sensor": giroscópio do celular (evento deviceorientation). É a mais
+//     precisa; inclinando o celular de lado, o dino inclina junto.
+//  2. "imagem": compara cada quadro da câmera com o anterior e mede quanto o
+//     ambiente andou na tela. Funciona em qualquer aparelho com câmera
+//     (inclusive notebook) e quando o sensor está bloqueado ou sem permissão.
+// O sensor é usado sempre que envia dados de verdade; senão, a imagem.
+// Limite: as duas medem a rotação da câmera (olhar em volta), não o
+// deslocamento; andar até o dino não muda a perspectiva.
+const anchoring = {
+  mode: "none",          // "none" | "sensor" | "image"
+  matrix: null,          // orientação atual do celular (modo sensor)
+  lastSensor: null,      // última leitura, para saber se o sensor está vivo
+  sensorChanges: 0,      // quantas leituras diferentes já chegaram
+  lastSensorTime: 0,
+  hinted: {},
+};
+const isAnchoringActive = () => anchoring.mode !== "none" && !cameraStage.hidden;
+const isFrontCamera = () => facingMode === "user";
+const stageCenter = () => ({ x: cameraStage.clientWidth / 2, y: cameraStage.clientHeight / 2 });
 
+// --- Modo sensor (giroscópio) ------------------------------------------------
 function getScreenAngle() {
   const angle = screen.orientation?.angle ?? window.orientation ?? 0;
   return toRad(angle);
@@ -514,13 +535,12 @@ function getFocalPx() {
   return (Math.max(vw, vh) / 2 / halfFov) * cover;
 }
 
-const isFrontCamera = () => facingMode === "user";
-
 // Ponto da tela → direção no mundo (com a orientação atual).
 function screenPointToWorld(x, y) {
   const f = getFocalPx();
-  const sx = (x - cameraStage.clientWidth / 2) / f;
-  const sy = -(y - cameraStage.clientHeight / 2) / f;
+  const c = stageCenter();
+  const sx = (x - c.x) / f;
+  const sy = -(y - c.y) / f;
   // Câmera traseira olha para -Z do aparelho; a frontal para +Z (imagem sem espelho).
   const screenVec = isFrontCamera() ? { x: -sx, y: sy, z: 1 } : { x: sx, y: sy, z: -1 };
   const d = mulMatrix(anchoring.matrix, screenToDevice(screenVec));
@@ -534,9 +554,9 @@ function worldToScreen(d) {
   const forward = isFrontCamera() ? v.z : -v.z;
   const sx = isFrontCamera() ? -v.x : v.x;
   const f = getFocalPx();
-  const cx = cameraStage.clientWidth / 2, cy = cameraStage.clientHeight / 2;
+  const c = stageCenter();
   if (forward < 0.08) return { ahead: false, dirX: sx, dirY: -v.y };
-  return { ahead: true, x: cx + (f * sx) / forward, y: cy - (f * v.y) / forward, dirX: sx, dirY: -v.y };
+  return { ahead: true, x: c.x + (f * sx) / forward, y: c.y - (f * v.y) / forward, dirX: sx, dirY: -v.y };
 }
 
 // Inclinação lateral do celular: ângulo para manter o dino "em pé".
@@ -545,15 +565,292 @@ function getRollAngle() {
   return Math.atan2(isFrontCamera() ? -up.x : up.x, up.y);
 }
 
-function anchorDino(dino) {
-  dino.anchor = anchoring.active ? screenPointToWorld(dino.feetX, dino.feetY) : null;
+function onDeviceOrientation(event) {
+  if (event.alpha == null || event.beta == null || event.gamma == null) return;
+  const reading = [event.alpha, event.beta, event.gamma];
+  const last = anchoring.lastSensor;
+  // Alguns navegadores mandam sempre o mesmo valor sem ter sensor de verdade:
+  // só confiamos no sensor depois de ver leituras mudando.
+  if (!last || reading.some((value, i) => Math.abs(value - last[i]) > 0.01)) anchoring.sensorChanges += 1;
+  anchoring.lastSensor = reading;
+  anchoring.lastSensorTime = performance.now();
+  anchoring.matrix = orientationMatrix(event.alpha, event.beta, event.gamma);
+  if (anchoring.mode !== "sensor" && anchoring.sensorChanges >= SENSOR_MIN_CHANGES && !cameraStage.hidden) {
+    setAnchoringMode("sensor");
+  }
 }
 
-// Atualiza a posição na tela de um dino a partir da direção guardada.
+// No iPhone/iPad é preciso pedir permissão, e isso só pode ser feito logo
+// após um toque do usuário (chamado no botão "Ver no meu espaço").
+let orientationRequested = false;
+function requestOrientationAccess() {
+  if (orientationRequested || typeof DeviceOrientationEvent === "undefined") return;
+  orientationRequested = true;
+  const listen = () => window.addEventListener("deviceorientation", onDeviceOrientation);
+  if (typeof DeviceOrientationEvent.requestPermission === "function") {
+    DeviceOrientationEvent.requestPermission()
+      .then((state) => { if (state === "granted") listen(); })
+      .catch(() => {});
+  } else {
+    listen();
+  }
+}
+
+// --- Modo imagem (rastreia o ambiente pela própria câmera) -------------------
+// Reduzimos cada quadro para uma imagem pequena em tons de cinza (bordas) e
+// procuramos o deslocamento que melhor encaixa o quadro atual num quadro de
+// referência. Esse deslocamento é o quanto o ambiente andou na tela.
+const imageTracker = {
+  canvas: document.createElement("canvas"),
+  ctx: null,
+  w: 0, h: 0,                 // imagem reduzida (escala fina)
+  w2: 0, h2: 0,               // metade disso (escala grossa)
+  gray: null,
+  current: null, current2: null, // quadro atual (bordas), nas duas escalas
+  key: null, key2: null,         // quadro de referência (bordas), nas duas escalas
+  sinceKeyX: 0, sinceKeyY: 0, // deslocamento desde a referência (px da escala fina)
+  velX: 0, velY: 0,           // último passo, para prever o próximo
+  baseX: 0, baseY: 0,         // deslocamento acumulado até a referência (px da tela)
+  shiftX: 0, shiftY: 0,       // deslocamento total do ambiente (px da tela)
+  timer: null,
+};
+
+function videoToScreenScale() {
+  const vw = cameraFeed.videoWidth, vh = cameraFeed.videoHeight;
+  if (!vw || !vh || !imageTracker.w) return 1;
+  const cover = Math.max(cameraStage.clientWidth / vw, cameraStage.clientHeight / vh);
+  return (vw / imageTracker.w) * cover;
+}
+
+function resetImageReference() {
+  const t = imageTracker;
+  t.key = null;
+  t.key2 = null;
+  t.sinceKeyX = t.sinceKeyY = 0;
+  t.velX = t.velY = 0;
+}
+
+// Imagem de bordas (diferenças entre vizinhos): não muda quando a câmera
+// ajusta o brilho sozinha.
+function computeEdges(gray, out, w, h) {
+  for (let y = 0; y < h - 1; y++) {
+    const row = y * w;
+    for (let x = 0; x < w - 1; x++) {
+      const i = row + x;
+      out[i] = Math.abs(gray[i + 1] - gray[i]) + Math.abs(gray[i + w] - gray[i]);
+    }
+  }
+}
+
+// Reduz pela metade (média de 2x2), para a busca na escala grossa.
+function halve(src, w, h, out, w2, h2) {
+  for (let y = 0; y < h2; y++) {
+    for (let x = 0; x < w2; x++) {
+      const i = 2 * y * w + 2 * x;
+      out[y * w2 + x] = (src[i] + src[i + 1] + src[i + w] + src[i + w + 1]) / 4;
+    }
+  }
+}
+
+// Procura (dx, dy), perto do palpite, tal que o conteúdo do quadro de
+// referência na posição (x, y) aparece agora em (x + dx, y + dy).
+function estimateShift(key, cur, w, h, guessX, guessY, search) {
+  const gx = Math.round(guessX), gy = Math.round(guessY);
+  const margin = search + Math.max(Math.abs(gx), Math.abs(gy)) + 2;
+  if (margin * 2 + 8 > Math.min(w, h)) return null; // andou demais: perdeu o rastreio
+  const step = 2;
+  let contrast = 0, samples = 0;
+  for (let y = margin; y < h - margin; y += step) {
+    for (let x = margin; x < w - margin; x += step) { contrast += key[y * w + x]; samples += 1; }
+  }
+  if (!samples || contrast / samples < IMAGE_TRACK_MIN_CONTRAST) return null; // parede lisa / escuro
+  const size = 2 * search + 1;
+  const scores = new Float64Array(size * size);
+  let best = Infinity, bestI = 0, bestJ = 0;
+  for (let j = 0; j < size; j++) {
+    const dy = gy - search + j;
+    for (let i = 0; i < size; i++) {
+      const dx = gx - search + i;
+      let sad = 0;
+      for (let y = margin; y < h - margin; y += step) {
+        const kr = y * w, cr = (y + dy) * w + dx;
+        for (let x = margin; x < w - margin; x += step) sad += Math.abs(key[kr + x] - cur[cr + x]);
+      }
+      scores[j * size + i] = sad;
+      if (sad < best) { best = sad; bestI = i; bestJ = j; }
+    }
+  }
+  // Ajuste fino (sub-pixel) em cada eixo. A soma de diferenças absolutas tem
+  // forma de "V" perto do mínimo, então usamos o ajuste em V (uma parábola
+  // puxaria o resultado para números inteiros e o dino andaria menos).
+  const refine = (a, b, c) => {
+    const den = 2 * (Math.max(a, c) - b);
+    return den > 0 ? clamp((a - c) / den, -0.5, 0.5) : 0;
+  };
+  const fx = bestI > 0 && bestI < size - 1
+    ? refine(scores[bestJ * size + bestI - 1], best, scores[bestJ * size + bestI + 1]) : 0;
+  const fy = bestJ > 0 && bestJ < size - 1
+    ? refine(scores[(bestJ - 1) * size + bestI], best, scores[(bestJ + 1) * size + bestI]) : 0;
+  return { dx: gx - search + bestI + fx, dy: gy - search + bestJ + fy };
+}
+
+function trackImageFrame() {
+  const t = imageTracker;
+  const vw = cameraFeed.videoWidth, vh = cameraFeed.videoHeight;
+  if (!vw || !vh || cameraFeed.readyState < 2) return;
+  const longSide = IMAGE_TRACK_SIZE;
+  const w = vw >= vh ? longSide : Math.round(longSide * vw / vh) & ~1;
+  const h = vw >= vh ? Math.round(longSide * vh / vw) & ~1 : longSide;
+  if (w !== t.w || h !== t.h || !t.ctx) {
+    t.w = w; t.h = h; t.w2 = w / 2; t.h2 = h / 2;
+    t.canvas.width = w; t.canvas.height = h;
+    t.ctx = t.canvas.getContext("2d", { willReadFrequently: true });
+    t.gray = new Float32Array(w * h);
+    t.current = new Float32Array(w * h);
+    t.current2 = new Float32Array(t.w2 * t.h2);
+    resetImageReference();
+  }
+  t.ctx.drawImage(cameraFeed, 0, 0, w, h);
+  const pixels = t.ctx.getImageData(0, 0, w, h).data;
+  for (let i = 0, p = 0; i < t.gray.length; i++, p += 4) {
+    t.gray[i] = pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114;
+  }
+  computeEdges(t.gray, t.current, w, h);
+  halve(t.current, w, h, t.current2, t.w2, t.h2);
+  if (!t.key) {
+    t.key = Float32Array.from(t.current);
+    t.key2 = Float32Array.from(t.current2);
+    return;
+  }
+  // 1) Escala grossa: alcança movimentos grandes, partindo da previsão.
+  const guessX = t.sinceKeyX + t.velX, guessY = t.sinceKeyY + t.velY;
+  const coarse = estimateShift(t.key2, t.current2, t.w2, t.h2, guessX / 2, guessY / 2, IMAGE_TRACK_SEARCH);
+  // 2) Escala fina: acerta o valor exato.
+  const fine = coarse && estimateShift(t.key, t.current, w, h, coarse.dx * 2, coarse.dy * 2, 2);
+  if (!fine) {
+    // Imagem sem detalhes ou movimento brusco demais: recomeça a referência
+    // a partir daqui, sem tirar os dinos do lugar.
+    t.baseX = t.shiftX;
+    t.baseY = t.shiftY;
+    t.key.set(t.current);
+    t.key2.set(t.current2);
+    t.sinceKeyX = t.sinceKeyY = t.velX = t.velY = 0;
+    return;
+  }
+  const stepX = fine.dx - t.sinceKeyX, stepY = fine.dy - t.sinceKeyY;
+  // Ignora tremidinhas mínimas (câmera parada).
+  if (Math.abs(stepX) > IMAGE_TRACK_DEADBAND || Math.abs(stepY) > IMAGE_TRACK_DEADBAND) {
+    t.velX = stepX;
+    t.velY = stepY;
+    t.sinceKeyX = fine.dx;
+    t.sinceKeyY = fine.dy;
+  } else {
+    t.velX = t.velY = 0;
+  }
+  const scale = videoToScreenScale();
+  t.shiftX = t.baseX + t.sinceKeyX * scale;
+  t.shiftY = t.baseY + t.sinceKeyY * scale;
+  // Andou bastante desde a referência: o quadro atual vira a nova referência.
+  if (Math.abs(t.sinceKeyX) > IMAGE_TRACK_REKEY || Math.abs(t.sinceKeyY) > IMAGE_TRACK_REKEY) {
+    t.baseX = t.shiftX;
+    t.baseY = t.shiftY;
+    t.key.set(t.current);
+    t.key2.set(t.current2);
+    t.sinceKeyX = t.sinceKeyY = 0;
+  }
+}
+
+// O rastreio roda no próprio ritmo (IMAGE_TRACK_FPS vezes por segundo),
+// mesmo que o desenho 3D esteja lento.
+function imageTrackerTick() {
+  if (cameraStage.hidden) { stopImageTracker(); return; }
+  // Sensor parou de mandar dados: volta para a imagem.
+  if (anchoring.mode === "sensor" && performance.now() - anchoring.lastSensorTime > SENSOR_TIMEOUT) {
+    setAnchoringMode("image");
+  }
+  if (anchoring.mode === "image") trackImageFrame();
+}
+
+function startImageTracker() {
+  if (imageTracker.timer != null) return;
+  imageTracker.timer = window.setInterval(imageTrackerTick, 1000 / IMAGE_TRACK_FPS);
+}
+
+function stopImageTracker() {
+  window.clearInterval(imageTracker.timer);
+  imageTracker.timer = null;
+}
+
+// --- Escolha do modo e posição de cada dino ----------------------------------
+// Onde o dino aparece na tela agora (pode estar fora da tela ou atrás).
+function projectAnchor(dino) {
+  const a = dino.anchor;
+  const c = stageCenter();
+  if (a?.mode === "sensor" && anchoring.matrix) return worldToScreen(a.dir);
+  if (a?.mode === "image") {
+    const x = a.x + imageTracker.shiftX, y = a.y + imageTracker.shiftY;
+    return { ahead: true, x, y, dirX: x - c.x, dirY: y - c.y };
+  }
+  return { ahead: true, x: dino.feetX, y: dino.feetY, dirX: dino.feetX - c.x, dirY: dino.feetY - c.y };
+}
+
+// Guarda a posição atual (na tela) do dino como o lugar dele no ambiente.
+function anchorDino(dino, screenPoint = { x: dino.feetX, y: dino.feetY }) {
+  if (anchoring.mode === "sensor" && anchoring.matrix) {
+    dino.anchor = { mode: "sensor", dir: screenPointToWorld(screenPoint.x, screenPoint.y) };
+  } else if (anchoring.mode === "image") {
+    dino.anchor = { mode: "image", x: screenPoint.x - imageTracker.shiftX, y: screenPoint.y - imageTracker.shiftY };
+  } else {
+    dino.anchor = null;
+  }
+}
+
+function setAnchoringMode(mode) {
+  if (anchoring.mode === mode) return;
+  // Converte a posição de cada dino para o novo modo, sem tirá-lo do lugar.
+  const points = dinos.map((dino) => {
+    const p = projectAnchor(dino);
+    if (p.ahead) return { x: p.x, y: p.y };
+    const c = stageCenter(); // estava atrás: manda para bem longe, do lado certo
+    const len = Math.hypot(p.dirX, p.dirY) || 1;
+    return { x: c.x + (p.dirX / len) * cameraStage.clientWidth * 3, y: c.y };
+  });
+  anchoring.mode = mode;
+  if (mode === "image") resetImageReference();
+  dinos.forEach((dino, i) => anchorDino(dino, points[i]));
+  if (mode === "none") {
+    dinos.forEach((dino) => {
+      dino.inView = true;
+      dino.el.style.visibility = "";
+      dino.el.style.transform = "";
+    });
+    hideAllMarkers();
+  }
+  updateSelectionUI();
+  showAnchoringHint();
+  startMotion();
+}
+
+// Chamado quando a câmera abre e fecha.
+function startAnchoring() {
+  const sensorAlive = anchoring.sensorChanges >= SENSOR_MIN_CHANGES
+    && performance.now() - anchoring.lastSensorTime < SENSOR_TIMEOUT;
+  setAnchoringMode(sensorAlive ? "sensor" : "image");
+  startImageTracker();
+}
+
+function stopAnchoring() {
+  stopImageTracker();
+  anchoring.mode = "none";
+  imageTracker.baseX = imageTracker.baseY = imageTracker.shiftX = imageTracker.shiftY = 0;
+  resetImageReference();
+}
+
+// Atualiza a posição na tela de um dino a partir do lugar guardado.
 // Devolve true se ele está visível e precisa ser redesenhado.
 function applyAnchor(dino) {
-  if (!dino.anchor) anchorDino(dino);
-  const p = worldToScreen(dino.anchor);
+  if (!dino.anchor || dino.anchor.mode !== anchoring.mode) anchorDino(dino);
+  const p = projectAnchor(dino);
   const width = cameraStage.clientWidth, height = cameraStage.clientHeight;
   const margin = Math.max(width, height) * 0.6; // o dino é largo: some só bem fora da tela
   const inView = p.ahead && p.x > -margin && p.x < width + margin && p.y > -margin && p.y < height + margin;
@@ -562,8 +859,12 @@ function applyAnchor(dino) {
   if (inView) {
     dino.feetX = p.x;
     dino.feetY = p.y;
-    dino.el.style.transformOrigin = `${p.x}px ${p.y}px`;
-    dino.el.style.transform = `rotate(${getRollAngle().toFixed(4)}rad)`;
+    if (anchoring.mode === "sensor") {
+      dino.el.style.transformOrigin = `${p.x}px ${p.y}px`;
+      dino.el.style.transform = `rotate(${getRollAngle().toFixed(4)}rad)`;
+    } else {
+      dino.el.style.transform = "";
+    }
   } else {
     dino.box = null;
   }
@@ -596,17 +897,17 @@ function updateMarker(dino, p) {
   }
   const len = Math.hypot(dx, dy) || 1;
   dx /= len; dy /= len;
-  const cx = width / 2, cy = height / 2;
+  const c = stageCenter();
   // Área onde as setas ficam: longe da barra do topo, da barra de baixo e
   // dos painéis laterais (para não ficarem escondidas atrás deles).
   const side = width < 520 ? 96 : 110;
   const box = { left: side, right: width - side, top: 120, bottom: height - 150 };
   const t = Math.min(
-    dx > 0 ? (box.right - cx) / dx : dx < 0 ? (box.left - cx) / dx : Infinity,
-    dy > 0 ? (box.bottom - cy) / dy : dy < 0 ? (box.top - cy) / dy : Infinity,
+    dx > 0 ? (box.right - c.x) / dx : dx < 0 ? (box.left - c.x) / dx : Infinity,
+    dy > 0 ? (box.bottom - c.y) / dy : dy < 0 ? (box.top - c.y) / dy : Infinity,
   );
-  dino.marker.style.left = `${cx + dx * t}px`;
-  dino.marker.style.top = `${cy + dy * t}px`;
+  dino.marker.style.left = `${c.x + dx * t}px`;
+  dino.marker.style.top = `${c.y + dy * t}px`;
   dino.marker.style.setProperty("--arrow-angle", `${Math.atan2(dy, dx)}rad`);
   dino.marker.classList.toggle("is-selected", dino === selectedDino);
   dino.marker.hidden = false;
@@ -616,38 +917,13 @@ function hideAllMarkers() {
   dinos.forEach((dino) => { if (dino.marker) dino.marker.hidden = true; });
 }
 
-function onDeviceOrientation(event) {
-  if (event.alpha == null || event.beta == null || event.gamma == null) return;
-  anchoring.matrix = orientationMatrix(event.alpha, event.beta, event.gamma);
-  if (anchoring.active) return;
-  // Primeira leitura: passa a fixar os dinos onde estão agora na tela.
-  anchoring.active = true;
-  dinos.forEach(anchorDino);
-  if (!cameraStage.hidden) showAnchoringHint();
-  updateSelectionUI();
-  startMotion();
-}
-
 function showAnchoringHint() {
-  if (anchoring.hinted || !anchoring.active) return;
-  anchoring.hinted = true;
-  showMessage("Os dinos ficam onde você os colocou. Vire o celular para olhar em volta e colocar dinos em outros lugares!");
-}
-
-// No iPhone/iPad é preciso pedir permissão, e isso só pode ser feito logo
-// após um toque do usuário (chamado no botão "Ver no meu espaço").
-let orientationRequested = false;
-function requestOrientationAccess() {
-  if (orientationRequested || typeof DeviceOrientationEvent === "undefined") return;
-  orientationRequested = true;
-  const listen = () => window.addEventListener("deviceorientation", onDeviceOrientation);
-  if (typeof DeviceOrientationEvent.requestPermission === "function") {
-    DeviceOrientationEvent.requestPermission()
-      .then((state) => { if (state === "granted") listen(); })
-      .catch(() => {});
-  } else {
-    listen();
-  }
+  const mode = anchoring.mode;
+  if (mode === "none" || cameraStage.hidden || anchoring.hinted[mode]) return;
+  anchoring.hinted[mode] = true;
+  showMessage(mode === "sensor"
+    ? "Os dinos ficam onde você os colocou. Vire o celular para olhar em volta e colocar dinos em outros lugares!"
+    : "Os dinos ficam onde você os colocou. Vire a câmera devagar para olhar em volta e colocar dinos em outros lugares!");
 }
 
 function setMotionEnabled(enabled) {
@@ -820,9 +1096,11 @@ function updateSelectionUI() {
     ? `${model.name} · ${dinos.indexOf(dino) + 1}/${dinos.length}`
     : model.name;
   cameraName.replaceChildren(createThumb(model, "camera-name-thumb"), document.createTextNode(label));
-  cameraHint.textContent = anchoring.active
-    ? "Vire o celular para olhar em volta · Arraste no dino para girar · Arraste fora para mover"
-    : dinos.length > 1
+  cameraHint.textContent = anchoring.mode === "sensor"
+    ? "🧭 Fixos pelo sensor · Vire o celular para olhar em volta · Arraste no dino para girar"
+    : anchoring.mode === "image"
+      ? "📷 Fixos pela imagem · Vire a câmera devagar · Arraste no dino para girar"
+      : dinos.length > 1
       ? "Toque num dino para escolher · Arraste nele para girar · Arraste fora para mover"
       : "Arraste o dino para girar · Arraste fora dele para mover · Pinça ou +/− para o tamanho";
 }
@@ -908,7 +1186,7 @@ async function openCamera() {
       if (!dinos.length) {
         addDino(selectedIndex, { x: cameraStage.clientWidth / 2, y: getDefaultFloorY(), rotation: previewRotation });
       }
-      showAnchoringHint();
+      startAnchoring();
       startMotion();
     });
   } catch (error) {
@@ -933,6 +1211,7 @@ async function closeCamera(exitFullscreen = true) {
   stopAllHolds();
   activePointers.clear();
   gesture = null;
+  stopAnchoring();
   stopCamera();
   clearScene();
   cameraStage.hidden = true;
@@ -954,6 +1233,7 @@ document.querySelector("#close-camera").addEventListener("click", () => closeCam
 document.querySelector("#switch-camera").addEventListener("click", async () => {
   facingMode = facingMode === "environment" ? "user" : "environment";
   stopCamera();
+  resetImageReference(); // imagem nova: o rastreio recomeça dela
   try {
     await startCameraStream();
   } catch (error) {
@@ -974,6 +1254,7 @@ document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState !== "visible" || cameraStage.hidden || isStreamLive()) return;
   try {
     stopCamera();
+    resetImageReference();
     await startCameraStream();
   } catch (error) {
     showMessage("Não foi possível religar a câmera. Toque em ✕ e abra de novo.");
