@@ -7,7 +7,9 @@
   <meta name="description" content="Encontre um dinossauro e leve-o para perto de você com realidade aumentada.">
   <title>Dinossauros por perto!</title>
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-  <link rel="stylesheet" href="css/styles.css">
+  <!-- "?v=..." força o navegador (principalmente no celular) a baixar a versão nova.
+       Ao publicar uma atualização, aumente esse número nas três linhas. -->
+  <link rel="stylesheet" href="css/styles.css?v=0.4">
 </head>
 <body>
   <div class="page">
@@ -80,7 +82,6 @@
         <button class="camera-button" id="switch-camera" type="button" aria-label="Trocar câmera">🔄</button>
       </div>
     </div>
-    <button class="fix-ar-button" id="fix-ar" type="button">📍 Fixar no chão</button>
     <div class="camera-loading" id="camera-loading" aria-live="polite" hidden>Carregando dinossauro...</div>
     <div class="camera-tools">
       <span class="camera-tools-label" aria-hidden="true">Adicionar</span>
@@ -107,7 +108,7 @@
   </section>
   <div class="toast" id="message" role="status" aria-live="polite" hidden></div>
 
-  <script src="js/dinos.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/dinos.js?v=0.4"></script>
+  <script src="js/app.js?v=0.4"></script>
 </body>
 </html>

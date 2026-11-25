@@ -473,14 +473,7 @@ function createDinoElement(model) {
   // O limite máximo de distância é ajustado em updateDino.
   el.setAttribute("min-camera-orbit", "-Infinity 0deg 0m");
   el.setAttribute("min-field-of-view", "1deg");
-  el.setAttribute("max-field-of-view", "120deg");
-  // AR do aparelho (botão "📍 Fixar no chão"): o dino fica preso ao chão e dá
-  // para andar em volta. Tamanho real, com pinça para aumentar/diminuir.
-  el.setAttribute("ar", "");
-  el.setAttribute("ar-modes", "webxr scene-viewer quick-look");
-  el.setAttribute("ar-placement", "floor");
-  el.setAttribute("ar-scale", "auto");
-  return el;
+  el.setAttribute("max-field-of-view", "120deg");  return el;
 }
 
 function updateLoadingLabel() {
@@ -517,7 +510,6 @@ function addDino(typeIndex, { x, y, rotation = 0, scale = 1 } = {}) {
     startMotion();
     startAnimation(dino);
   });
-  dino.el.addEventListener("ar-status", (event) => onDinoARStatus(event));
   // Quando uma ação termina, volta para a animação "parado".
   dino.el.addEventListener("finished", () => {
     if (!dino.playingAction || !dinos.includes(dino)) return;
@@ -579,7 +571,6 @@ function clearScene() {
 function updateSelectionUI() {
   const dino = selectedDino;
   dinoControls.forEach((control) => { control.disabled = !dino; });
-  fixArButton.disabled = !dino;
   cameraDinoButtons.forEach((button, index) => {
     button.setAttribute("aria-pressed", String(!!dino && dino.typeIndex === index));
   });
@@ -661,9 +652,9 @@ async function startCameraStream() {
 
 async function openCamera() {
   if (openingCamera || cameraStream) return;
-  // Sempre abrimos o nosso modo câmera (com os ícones para adicionar, girar e
-  // mudar o tamanho), também em celulares e tablets. O AR nativo do aparelho
-  // é aberto só pelo botão "📍 Fixar no chão" (ver enterNativeAR).
+  // Sempre abrimos o nosso modo câmera no navegador (com os ícones para
+  // adicionar, girar e mudar o tamanho), igual no computador, celular e
+  // tablet. O AR/VR do aparelho nunca é usado.
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showMessage("A câmera precisa de uma página segura. Abra pelo atalho abrir-no-navegador.bat ou use um endereço HTTPS.");
@@ -707,7 +698,6 @@ async function closeCamera(exitFullscreen = true) {
   stopAllHolds();
   activePointers.clear();
   gesture = null;
-  inNativeAR = false;
   stopCamera();
   clearScene();
   cameraStage.hidden = true;
@@ -735,79 +725,23 @@ document.querySelector("#switch-camera").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// AR do aparelho: "📍 Fixar no chão"
+// Câmera interrompida pelo sistema
 // ---------------------------------------------------------------------------
-// A câmera comum do navegador não sabe onde fica o chão nem como o aparelho se
-// move, então no nosso modo o dino acompanha a tela. O AR do aparelho (ARCore
-// no Android via WebXR/Scene Viewer, ARKit no iPhone/iPad via Quick Look)
-// rastreia o ambiente: o dino fica preso no chão e dá para andar em volta.
-// Ele mostra um dino por vez (o escolhido). Ao sair, voltamos para a cena.
-const fixArButton = document.querySelector("#fix-ar");
-const NATIVE_AR_TIMEOUT = 4000; // ms: se o AR não abrir nesse tempo, volta para a câmera
-let inNativeAR = false;
-let nativeARStarted = false;
-let nativeARTimer = null;
-
+// Tudo acontece no navegador, com a câmera do navegador (nunca o AR/VR do
+// aparelho). No celular, bloquear a tela ou trocar de app pode desligar a
+// câmera da página; quando a página volta a aparecer, religamos.
 const isStreamLive = () => !!cameraStream
   && cameraStream.getVideoTracks().some((track) => track.readyState === "live");
 
-async function resumeAfterNativeAR() {
-  window.clearTimeout(nativeARTimer);
-  inNativeAR = false;
-  nativeARStarted = false;
-  if (cameraStage.hidden) return;
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || cameraStage.hidden || isStreamLive()) return;
   try {
-    if (!isStreamLive()) {
-      stopCamera();
-      await startCameraStream();
-    }
+    stopCamera();
+    await startCameraStream();
   } catch (error) {
-    showMessage("Não foi possível voltar para a câmera. Toque em ✕ e abra de novo.");
+    showMessage("Não foi possível religar a câmera. Toque em ✕ e abra de novo.");
   }
   dinos.forEach(updateDino);
-}
-
-async function enterNativeAR() {
-  const dino = selectedDino;
-  if (!dino || !dino.loaded) return;
-  if (!dino.el.canActivateAR) {
-    showMessage("Para fixar o dino no chão é preciso um celular ou tablet com realidade aumentada (Android com ARCore, iPhone ou iPad) e o site aberto em um endereço https://.");
-    return;
-  }
-  // O AR do aparelho precisa da câmera só para ele.
-  inNativeAR = true;
-  nativeARStarted = false;
-  stopCamera();
-  // Se o AR não abrir (nem a página sair da tela), volta para a nossa câmera.
-  window.clearTimeout(nativeARTimer);
-  nativeARTimer = window.setTimeout(() => {
-    if (inNativeAR && !nativeARStarted && document.visibilityState === "visible") resumeAfterNativeAR();
-  }, NATIVE_AR_TIMEOUT);
-  try {
-    await dino.el.activateAR();
-  } catch (error) {
-    showMessage("Não foi possível abrir a realidade aumentada. Tente de novo.");
-    resumeAfterNativeAR();
-  }
-}
-
-fixArButton.addEventListener("click", enterNativeAR);
-
-// Android (WebXR): cada dino avisa quando a sessão de AR termina ou falha
-// (o evento "ar-status" é ouvido em addDino).
-function onDinoARStatus(event) {
-  const status = event.detail?.status;
-  if (status === "session-started") nativeARStarted = true;
-  if (inNativeAR && (status === "not-presenting" || status === "failed")) resumeAfterNativeAR();
-}
-
-// iPhone/iPad (Quick Look) e Android (Scene Viewer) abrem outro app; quando a
-// página volta a ficar visível, religamos a nossa câmera (o sistema pode ter
-// interrompido a câmera da página enquanto ela estava escondida).
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible" || cameraStage.hidden) return;
-  if (inNativeAR && nativeARStarted) return; // sessão WebXR ainda aberta
-  if (inNativeAR || !isStreamLive()) resumeAfterNativeAR();
 });
 
 // ---------------------------------------------------------------------------
