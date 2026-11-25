@@ -9,7 +9,7 @@
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
   <!-- "?v=..." força o navegador (principalmente no celular) a baixar a versão nova.
        Ao publicar uma atualização, aumente esse número nas três linhas. -->
-  <link rel="stylesheet" href="css/styles.css?v=0.4">
+  <link rel="stylesheet" href="css/styles.css?v=0.5">
 </head>
 <body>
   <div class="page">
@@ -74,6 +74,8 @@
     <div class="camera-shade" aria-hidden="true"></div>
     <!-- Os dinossauros da cena são criados aqui pelo js/app.js -->
     <div class="scene-layer" id="scene-layer"></div>
+    <!-- Setinhas na borda apontando para dinos que ficaram fora da tela -->
+    <div class="offscreen-markers" id="offscreen-markers"></div>
     <div class="camera-topbar">
       <button class="camera-button" id="close-camera" type="button" aria-label="Voltar">✕</button>
       <div class="camera-name" id="camera-name" aria-live="polite"></div>
@@ -108,7 +110,7 @@
   </section>
   <div class="toast" id="message" role="status" aria-live="polite" hidden></div>
 
-  <script src="js/dinos.js?v=0.4"></script>
-  <script src="js/app.js?v=0.4"></script>
+  <script src="js/dinos.js?v=0.5"></script>
+  <script src="js/app.js?v=0.5"></script>
 </body>
 </html>

@@ -645,6 +645,51 @@ model-viewer {
 }
 
 
+/* Setinhas na borda: indicam para onde virar o celular para achar um dino */
+.offscreen-markers {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+
+.offscreen-marker {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: rgb(20 35 28 / 72%);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 30%);
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(6px);
+}
+
+.offscreen-marker[hidden] { display: none; }
+.offscreen-marker.is-selected { border-color: #dff18c; }
+
+.offscreen-marker-thumb { width: 38px; height: 26px; object-fit: contain; }
+
+/* Seta que aponta para fora, na direção do dino */
+.offscreen-marker-arrow {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--arrow-angle, 0rad));
+}
+
+.offscreen-marker-arrow::after {
+  position: absolute;
+  top: 50%;
+  right: -11px;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 10px solid #dff18c;
+  content: "";
+  transform: translateY(-50%);
+}
+
 .camera-loading {
   position: absolute;
   z-index: 2;

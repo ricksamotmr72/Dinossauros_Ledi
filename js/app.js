@@ -27,6 +27,8 @@ const MOTION_LOOK_ANGLE = [12, 28];    // "olhar em volta": quanto vira (graus, 
 const MOTION_LOOK_TIME = [2600, 4200]; // duração de cada olhada (ms, mín/máx)
 const MOTION_LOOK_PAUSE = [4000, 10000]; // intervalo entre olhadas (ms, mín/máx)
 const ANIMATION_ACTION_PAUSE = [4000, 9000]; // modelos animados: intervalo entre ações (ms)
+// Dinos fixos no ambiente (giroscópio)
+const CAMERA_FEED_FOV = 65; // campo de visão da câmera do celular no lado maior da imagem (graus)
 
 // ---------------------------------------------------------------------------
 // Elementos
@@ -51,6 +53,7 @@ const cameraName = document.querySelector("#camera-name");
 const cameraHint = document.querySelector("#camera-hint");
 const sceneLayer = document.querySelector("#scene-layer");
 const motionButton = document.querySelector("#toggle-motion");
+const markersLayer = document.querySelector("#offscreen-markers");
 const sizeValue = document.querySelector("#size-value");
 const rotateValue = document.querySelector("#rotate-value");
 const dinoControls = [...document.querySelectorAll(".dino-control")];
@@ -381,13 +384,24 @@ function updateMotion(dino, now) {
   dino.motionPitch = breath * MOTION_BREATH_DEG;
 }
 
+// Laço por quadro da cena: posição de cada dino no ambiente (giroscópio) e
+// movimento simulado dos modelos sem animação.
 function motionLoop(now) {
   motionFrame = null;
-  if (!motionEnabled || cameraStage.hidden || !dinos.length) return;
+  const tracking = isAnchoringActive();
+  if ((!motionEnabled && !tracking) || cameraStage.hidden || !dinos.length) {
+    if (!tracking) hideAllMarkers();
+    return;
+  }
   dinos.forEach((dino) => {
-    if (!dino.loaded || dino.animation) return; // animados usam a animação real
-    updateMotion(dino, now);
-    updateDino(dino);
+    if (!dino.loaded) return;
+    let changed = false;
+    if (tracking) changed = applyAnchor(dino);
+    if (motionEnabled && !dino.animation) { // animados usam a animação real
+      updateMotion(dino, now);
+      changed = true;
+    }
+    if (changed && dino.inView) updateDino(dino);
   });
   motionFrame = window.requestAnimationFrame(motionLoop);
 }
@@ -429,7 +443,211 @@ function stopAnimation(dino) {
 }
 
 function startMotion() {
-  if (motionFrame == null && motionEnabled) motionFrame = window.requestAnimationFrame(motionLoop);
+  if (motionFrame == null && (motionEnabled || isAnchoringActive())) {
+    motionFrame = window.requestAnimationFrame(motionLoop);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dinos fixos no ambiente (giroscópio)
+// ---------------------------------------------------------------------------
+// O navegador informa a orientação do celular (deviceorientation). Ao inserir
+// ou mover um dino, guardamos a DIREÇÃO no ambiente em que ele foi colocado
+// (dino.anchor, um vetor no sistema do mundo: x = leste, y = norte, z = cima).
+// A cada quadro, projetamos essa direção na tela com a orientação atual:
+// virando o celular, o dino fica no lugar e sai da tela; apontando de volta,
+// ele reaparece. Inclinando o celular de lado, o dino inclina junto.
+// Limite: o giroscópio mede só a rotação (não o deslocamento), então dá para
+// olhar em volta, mas andar até o dino não muda a perspectiva.
+// Sem giroscópio (computador), os dinos ficam presos à tela como antes.
+const anchoring = { active: false, matrix: null, hinted: false };
+const isAnchoringActive = () => anchoring.active && !cameraStage.hidden;
+
+function getScreenAngle() {
+  const angle = screen.orientation?.angle ?? window.orientation ?? 0;
+  return toRad(angle);
+}
+
+// Matriz de rotação aparelho → mundo (especificação W3C, ordem Z-X'-Y'').
+function orientationMatrix(alpha, beta, gamma) {
+  const a = toRad(alpha), b = toRad(beta), g = toRad(gamma);
+  const cA = Math.cos(a), sA = Math.sin(a);
+  const cB = Math.cos(b), sB = Math.sin(b);
+  const cG = Math.cos(g), sG = Math.sin(g);
+  return [
+    [cA * cG - sA * sB * sG, -cB * sA, cG * sA * sB + cA * sG],
+    [cG * sA + cA * sB * sG, cA * cB, sA * sG - cA * cG * sB],
+    [-cB * sG, sB, cB * cG],
+  ];
+}
+
+const mulMatrix = (m, v) => ({
+  x: m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z,
+  y: m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z,
+  z: m[2][0] * v.x + m[2][1] * v.y + m[2][2] * v.z,
+});
+const mulTransposed = (m, v) => ({
+  x: m[0][0] * v.x + m[1][0] * v.y + m[2][0] * v.z,
+  y: m[0][1] * v.x + m[1][1] * v.y + m[2][1] * v.z,
+  z: m[0][2] * v.x + m[1][2] * v.y + m[2][2] * v.z,
+});
+
+// Eixos do aparelho ↔ eixos da tela (a tela gira quando o celular deita).
+function deviceToScreen(v) {
+  const a = getScreenAngle(), c = Math.cos(a), s = Math.sin(a);
+  return { x: c * v.x - s * v.y, y: s * v.x + c * v.y, z: v.z };
+}
+function screenToDevice(v) {
+  const a = getScreenAngle(), c = Math.cos(a), s = Math.sin(a);
+  return { x: c * v.x + s * v.y, y: -s * v.x + c * v.y, z: v.z };
+}
+
+// Distância focal da imagem da câmera, em pixels da tela.
+function getFocalPx() {
+  const width = cameraStage.clientWidth || 1;
+  const height = cameraStage.clientHeight || 1;
+  const halfFov = Math.tan(toRad(CAMERA_FEED_FOV / 2));
+  const vw = cameraFeed.videoWidth, vh = cameraFeed.videoHeight;
+  if (!vw || !vh) return Math.max(width, height) / 2 / halfFov;
+  // O vídeo é exibido com "object-fit: cover" (ampliado até cobrir a tela).
+  const cover = Math.max(width / vw, height / vh);
+  return (Math.max(vw, vh) / 2 / halfFov) * cover;
+}
+
+const isFrontCamera = () => facingMode === "user";
+
+// Ponto da tela → direção no mundo (com a orientação atual).
+function screenPointToWorld(x, y) {
+  const f = getFocalPx();
+  const sx = (x - cameraStage.clientWidth / 2) / f;
+  const sy = -(y - cameraStage.clientHeight / 2) / f;
+  // Câmera traseira olha para -Z do aparelho; a frontal para +Z (imagem sem espelho).
+  const screenVec = isFrontCamera() ? { x: -sx, y: sy, z: 1 } : { x: sx, y: sy, z: -1 };
+  const d = mulMatrix(anchoring.matrix, screenToDevice(screenVec));
+  const len = Math.hypot(d.x, d.y, d.z) || 1;
+  return { x: d.x / len, y: d.y / len, z: d.z / len };
+}
+
+// Direção no mundo → ponto da tela (ou "atrás de você").
+function worldToScreen(d) {
+  const v = deviceToScreen(mulTransposed(anchoring.matrix, d));
+  const forward = isFrontCamera() ? v.z : -v.z;
+  const sx = isFrontCamera() ? -v.x : v.x;
+  const f = getFocalPx();
+  const cx = cameraStage.clientWidth / 2, cy = cameraStage.clientHeight / 2;
+  if (forward < 0.08) return { ahead: false, dirX: sx, dirY: -v.y };
+  return { ahead: true, x: cx + (f * sx) / forward, y: cy - (f * v.y) / forward, dirX: sx, dirY: -v.y };
+}
+
+// Inclinação lateral do celular: ângulo para manter o dino "em pé".
+function getRollAngle() {
+  const up = deviceToScreen(mulTransposed(anchoring.matrix, { x: 0, y: 0, z: 1 }));
+  return Math.atan2(isFrontCamera() ? -up.x : up.x, up.y);
+}
+
+function anchorDino(dino) {
+  dino.anchor = anchoring.active ? screenPointToWorld(dino.feetX, dino.feetY) : null;
+}
+
+// Atualiza a posição na tela de um dino a partir da direção guardada.
+// Devolve true se ele está visível e precisa ser redesenhado.
+function applyAnchor(dino) {
+  if (!dino.anchor) anchorDino(dino);
+  const p = worldToScreen(dino.anchor);
+  const width = cameraStage.clientWidth, height = cameraStage.clientHeight;
+  const margin = Math.max(width, height) * 0.6; // o dino é largo: some só bem fora da tela
+  const inView = p.ahead && p.x > -margin && p.x < width + margin && p.y > -margin && p.y < height + margin;
+  dino.inView = inView;
+  dino.el.style.visibility = inView ? "" : "hidden";
+  if (inView) {
+    dino.feetX = p.x;
+    dino.feetY = p.y;
+    dino.el.style.transformOrigin = `${p.x}px ${p.y}px`;
+    dino.el.style.transform = `rotate(${getRollAngle().toFixed(4)}rad)`;
+  } else {
+    dino.box = null;
+  }
+  updateMarker(dino, p);
+  return inView;
+}
+
+// Setinha na borda da tela apontando para um dino fora da vista.
+function updateMarker(dino, p) {
+  const width = cameraStage.clientWidth, height = cameraStage.clientHeight;
+  const onScreen = p.ahead && p.x >= 0 && p.x <= width && p.y >= 0 && p.y <= height;
+  if (onScreen) {
+    if (dino.marker) dino.marker.hidden = true;
+    return;
+  }
+  if (!dino.marker) {
+    dino.marker = document.createElement("div");
+    dino.marker.className = "offscreen-marker";
+    dino.marker.setAttribute("aria-hidden", "true");
+    const arrow = document.createElement("span");
+    arrow.className = "offscreen-marker-arrow";
+    dino.marker.append(createThumb(models[dino.typeIndex], "offscreen-marker-thumb"), arrow);
+    markersLayer.append(dino.marker);
+  }
+  let dx = p.dirX, dy = p.dirY;
+  // Dino atrás de você: a seta indica o lado para onde virar.
+  if (!p.ahead) {
+    dx = dx < 0 ? -1 : 1;
+    dy = 0;
+  }
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len; dy /= len;
+  const cx = width / 2, cy = height / 2;
+  // Área onde as setas ficam: longe da barra do topo, da barra de baixo e
+  // dos painéis laterais (para não ficarem escondidas atrás deles).
+  const side = width < 520 ? 96 : 110;
+  const box = { left: side, right: width - side, top: 120, bottom: height - 150 };
+  const t = Math.min(
+    dx > 0 ? (box.right - cx) / dx : dx < 0 ? (box.left - cx) / dx : Infinity,
+    dy > 0 ? (box.bottom - cy) / dy : dy < 0 ? (box.top - cy) / dy : Infinity,
+  );
+  dino.marker.style.left = `${cx + dx * t}px`;
+  dino.marker.style.top = `${cy + dy * t}px`;
+  dino.marker.style.setProperty("--arrow-angle", `${Math.atan2(dy, dx)}rad`);
+  dino.marker.classList.toggle("is-selected", dino === selectedDino);
+  dino.marker.hidden = false;
+}
+
+function hideAllMarkers() {
+  dinos.forEach((dino) => { if (dino.marker) dino.marker.hidden = true; });
+}
+
+function onDeviceOrientation(event) {
+  if (event.alpha == null || event.beta == null || event.gamma == null) return;
+  anchoring.matrix = orientationMatrix(event.alpha, event.beta, event.gamma);
+  if (anchoring.active) return;
+  // Primeira leitura: passa a fixar os dinos onde estão agora na tela.
+  anchoring.active = true;
+  dinos.forEach(anchorDino);
+  if (!cameraStage.hidden) showAnchoringHint();
+  updateSelectionUI();
+  startMotion();
+}
+
+function showAnchoringHint() {
+  if (anchoring.hinted || !anchoring.active) return;
+  anchoring.hinted = true;
+  showMessage("Os dinos ficam onde você os colocou. Vire o celular para olhar em volta e colocar dinos em outros lugares!");
+}
+
+// No iPhone/iPad é preciso pedir permissão, e isso só pode ser feito logo
+// após um toque do usuário (chamado no botão "Ver no meu espaço").
+let orientationRequested = false;
+function requestOrientationAccess() {
+  if (orientationRequested || typeof DeviceOrientationEvent === "undefined") return;
+  orientationRequested = true;
+  const listen = () => window.addEventListener("deviceorientation", onDeviceOrientation);
+  if (typeof DeviceOrientationEvent.requestPermission === "function") {
+    DeviceOrientationEvent.requestPermission()
+      .then((state) => { if (state === "granted") listen(); })
+      .catch(() => {});
+  } else {
+    listen();
+  }
 }
 
 function setMotionEnabled(enabled) {
@@ -502,7 +720,11 @@ function addDino(typeIndex, { x, y, rotation = 0, scale = 1 } = {}) {
     actionTimer: null,
     playingAction: false,
     lastAction: null,
+    anchor: null,   // direção no ambiente (giroscópio); ver "Dinos fixos no ambiente"
+    inView: true,
+    marker: null,   // setinha na borda quando o dino está fora da tela
   };
+  anchorDino(dino);
   dino.el.addEventListener("load", () => {
     dino.loaded = true;
     updateDino(dino);
@@ -532,15 +754,21 @@ function addDino(typeIndex, { x, y, rotation = 0, scale = 1 } = {}) {
 // alinhado com ele), no lugar livre mais perto do centro da tela.
 function getNewDinoPosition() {
   const width = cameraStage.clientWidth;
-  const floorY = selectedDino ? selectedDino.feetY : getDefaultFloorY();
+  const height = cameraStage.clientHeight;
+  // Só contam os dinos que estão na tela agora (os outros ficaram em outro
+  // lugar do ambiente).
+  const visible = dinos.filter((dino) => dino.inView
+    && dino.feetX >= 0 && dino.feetX <= width && dino.feetY >= 0 && dino.feetY <= height);
+  const reference = visible.includes(selectedDino) ? selectedDino : null;
+  const floorY = reference ? clamp(reference.feetY, TOP_LIMIT, height - 10) : getDefaultFloorY();
   const spacing = width * NEW_DINO_SPACING;
   const offsets = [0, 1, -1, 2, -2, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5];
-  const isFree = (x) => dinos.every((dino) =>
+  const isFree = (x) => visible.every((dino) =>
     Math.abs(dino.feetX - x) > spacing * 0.45 || Math.abs(dino.feetY - floorY) > 40);
   const x = offsets
     .map((offset) => width / 2 + offset * spacing)
     .find((candidate) => candidate >= SIDE_MARGIN && candidate <= width - SIDE_MARGIN && isFree(candidate));
-  return { x: x ?? clamp((selectedDino?.feetX ?? width / 2) + 30, SIDE_MARGIN, width - SIDE_MARGIN), y: floorY };
+  return { x: x ?? clamp((reference?.feetX ?? width / 2) + 30, SIDE_MARGIN, width - SIDE_MARGIN), y: floorY };
 }
 
 function selectDino(dino) {
@@ -552,6 +780,7 @@ function removeDino(dino) {
   if (!dino) return;
   stopAnimation(dino);
   dino.el.remove();
+  dino.marker?.remove();
   dinos = dinos.filter((item) => item !== dino);
   if (selectedDino === dino) selectedDino = dinos[dinos.length - 1] ?? null;
   updateSelectionUI();
@@ -562,6 +791,7 @@ function clearScene() {
   dinos.forEach((dino) => {
     stopAnimation(dino);
     dino.el.remove();
+    dino.marker?.remove();
   });
   dinos = [];
   selectedDino = null;
@@ -590,9 +820,11 @@ function updateSelectionUI() {
     ? `${model.name} · ${dinos.indexOf(dino) + 1}/${dinos.length}`
     : model.name;
   cameraName.replaceChildren(createThumb(model, "camera-name-thumb"), document.createTextNode(label));
-  cameraHint.textContent = dinos.length > 1
-    ? "Toque num dino para escolher · Arraste nele para girar · Arraste fora para mover"
-    : "Arraste o dino para girar · Arraste fora dele para mover · Pinça ou +/− para o tamanho";
+  cameraHint.textContent = anchoring.active
+    ? "Vire o celular para olhar em volta · Arraste no dino para girar · Arraste fora para mover"
+    : dinos.length > 1
+      ? "Toque num dino para escolher · Arraste nele para girar · Arraste fora para mover"
+      : "Arraste o dino para girar · Arraste fora dele para mover · Pinça ou +/− para o tamanho";
 }
 
 // Dino que está sob o ponto (o da frente primeiro).
@@ -613,6 +845,7 @@ function setDinoPosition(dino, x, y) {
   if (!dino) return;
   dino.feetX = clamp(x, 0, cameraStage.clientWidth);
   dino.feetY = clamp(y, TOP_LIMIT, cameraStage.clientHeight - 10);
+  anchorDino(dino); // fixa o dino no novo lugar do ambiente
   updateDino(dino);
 }
 
@@ -675,6 +908,8 @@ async function openCamera() {
       if (!dinos.length) {
         addDino(selectedIndex, { x: cameraStage.clientWidth / 2, y: getDefaultFloorY(), rotation: previewRotation });
       }
+      showAnchoringHint();
+      startMotion();
     });
   } catch (error) {
     openingCamera = false;
@@ -705,6 +940,8 @@ async function closeCamera(exitFullscreen = true) {
 }
 
 document.querySelector("#ar-button").addEventListener("click", async () => {
+  // Precisa ser logo no toque (exigência do iPhone/iPad para o giroscópio).
+  requestOrientationAccess();
   if (!previewViewer.loaded) {
     showMessage("Só um instante! O dinossauro ainda está chegando.");
     return;
@@ -921,6 +1158,8 @@ cameraStage.addEventListener("pointermove", (event) => {
 // ---------------------------------------------------------------------------
 window.addEventListener("resize", () => {
   if (cameraStage.hidden) return;
+  // Com o giroscópio, cada quadro já recalcula a posição a partir do ambiente.
+  if (isAnchoringActive()) return;
   dinos.forEach((dino) => setDinoPosition(dino, dino.feetX, dino.feetY));
 });
 
